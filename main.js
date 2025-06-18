@@ -6,11 +6,17 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, deleteDoc, u
 
 // --- Firebase Setup ---
 // This configuration connects the game to your Firebase project.
-// The `__firebase_config` and `__app_id` are special variables that will be
-// provided by the environment you're running this in. For local testing,
-// you might need to replace them with your actual Firebase config.
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", projectId: "YOUR_PROJECT_ID" };
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'acre-game-dev';
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBc6LPPXabs-MvfhfYzkwg93id4ffDdHfg",
+  authDomain: "acre-49540.firebaseapp.com",
+  projectId: "acre-49540",
+  storageBucket: "acre-49540.firebasestorage.app",
+  messagingSenderId: "845010622970",
+  appId: "1:845010622970:web:496a3cbe8bab2a6e3e6c43",
+  measurementId: "G-XJ0D283DXC"
+};
+const appId = 'acre-49540'; // Using your projectId as the appId
 
 let app, auth, db, userId;
 
