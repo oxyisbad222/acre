@@ -21,6 +21,23 @@ canvas {
     image-rendering: crisp-edges;
 }
 
+/* --- Loading Screen --- */
+#loading-visual {
+    background-image: url('assets/Spritesheets/spritesheet_particles.png');
+    /* Corresponds to 'swirl_white.png' in the spritesheet */
+    background-position: -0px -0px; 
+    width: 36px;
+    height: 34px;
+    transform: scale(3);
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: scale(3) rotate(0deg); }
+    to { transform: scale(3) rotate(360deg); }
+}
+
+
 /* --- HUD & UI Elements --- */
 .hud-element {
     position: absolute;
@@ -44,7 +61,11 @@ canvas {
 .hotbar-slot.selected {
     border-color: #facc15; /* yellow-400 from Tailwind */
     transform: scale(1.1);
-    background-color: rgba(50,50,0,0.5);
+    background-color: rgba(80, 70, 0, 0.6);
+}
+
+.hotbar-slot img {
+    image-rendering: pixelated;
 }
 
 .hotbar-item-image {
@@ -125,7 +146,17 @@ canvas {
     border-bottom-color: #555555;
     padding: 2rem;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
-    color: #333;
+    color: #222;
+}
+
+#pause-world-code {
+    color: white;
+    font-weight: bold;
+    text-shadow:
+        -2px -2px 0 #000,
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000;
 }
 
 .pixel-button {
@@ -142,11 +173,16 @@ canvas {
     transition: all 0.1s;
 }
 
-.pixel-button:active {
+.pixel-button:hover {
+    background-color: #dcdcdc;
+}
+
+.pixel-button:active, .pixel-button.active {
     border-top-color: #555555;
     border-left-color: #555555;
     border-right-color: #ffffff;
     border-bottom-color: #ffffff;
+    background-color: #b0b0b0;
 }
 
 .pixel-input {
@@ -161,6 +197,36 @@ canvas {
     color: #1f2937;
     outline: none;
 }
+
+/* --- Character Selection --- */
+.character-option {
+    border: 4px solid #555;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    background-color: rgba(0,0,0,0.3);
+}
+.character-option:hover {
+    background-color: rgba(255,255,255,0.2);
+    transform: scale(1.05);
+}
+.character-option.selected {
+    border-color: #facc15;
+    background-color: rgba(250, 204, 21, 0.3);
+}
+.character-preview {
+    width: 96px;
+    height: 96px;
+    margin: 0 auto;
+    overflow: hidden;
+    position: relative;
+    transform: scale(1.5);
+}
+.character-preview img {
+    position: absolute;
+    image-rendering: pixelated;
+}
+
 
 /* --- Inventory & Crafting Screen --- */
 #inventory-grid {
@@ -185,6 +251,7 @@ canvas {
     padding: 8px;
     cursor: pointer;
     background-color: rgba(0,0,0,0.2);
+    transition: background-color 0.2s;
 }
 
 .recipe:hover {
@@ -195,12 +262,15 @@ canvas {
     border-color: #22c55e; /* green-500 from Tailwind */
     background-color: rgba(34, 197, 94, 0.2);
 }
+.recipe.can-craft:hover {
+    background-color: rgba(34, 197, 94, 0.4);
+}
 
 /* --- Main Menu Parallax Background --- */
 .parallax-bg {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
-    background-color: #87CEEB; /* Sky blue */
+    background-color: #78a9fa; /* Sky blue */
     background-size: cover;
     background-position: center;
 }
@@ -212,21 +282,34 @@ canvas {
     width: 100%;
     height: 100%;
     transition: background-position 1s ease-out;
+}
+
+#parallax-sky {
+    background-image: url('assets/sky_texture.png'); /* Replace with a proper seamless sky texture if available */
+    background-size: cover;
+}
+
+#parallax-far-hills {
+    background-image: url('assets/far_hills.png'); /* A seamless image of distant hills */
+    background-position: bottom;
     background-size: contain;
+    height: 150px;
+    bottom: 100px;
+    opacity: 0.5;
 }
 
 #parallax-hills { 
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200"><path d="M0 100 C 50 50, 150 50, 200 100 S 250 150, 300 100 S 350 50, 400 100 S 450 150, 500 100 S 550 50, 600 100 S 650 150, 700 100 S 750 50, 800 100 V 200 H 0 Z" fill="%23228B22"/></svg>'); 
+    background-image: url('assets/ground_texture.png'); /* A seamless image of grass/dirt */
     background-position: bottom; 
-    height: 200px; 
+    background-size: auto 128px; /* Let it repeat horizontally, fix height */
+    height: 128px; 
     bottom: 0;
-    opacity: 0.7;
 }
 
 #parallax-trees { 
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"><path d="M50 300 L 50 150 L 25 150 L 75 50 L 125 150 L 100 150 L 100 300 Z M200 300 L 200 120 L 175 120 L 225 20 L 275 120 L 250 120 L 250 300 Z M350 300 L 350 180 L 325 180 L 375 80 L 425 180 L 400 180 L 400 300 Z M500 300 L 500 150 L 475 150 L 525 50 L 575 150 L 550 150 L 550 300 Z M650 300 L 650 120 L 625 120 L 675 20 L 725 120 L 700 120 L 700 300 Z" fill="%23006400"/></svg>'); 
+    background-image: url('assets/tree_line.png'); /* A seamless image of trees */
     background-position: bottom; 
-    height: 300px; 
-    bottom: 0;
-    opacity: 0.6;
+    background-size: contain;
+    height: 300px;
+    bottom: 80px; /* Sit them on top of the hills layer */
 }
