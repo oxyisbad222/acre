@@ -5,8 +5,9 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- Firebase Setup ---
-// This configuration connects the game to your Firebase project.
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// WARNING: This configuration is visible on the client-side. For a production application,
+// you should use security rules and/or a backend server to manage sensitive operations
+// and protect your API keys.
 const firebaseConfig = {
   apiKey: "AIzaSyBc6LPPXabs-MvfhfYzkwg93id4ffDdHfg",
   authDomain: "acre-49540.firebaseapp.com",
@@ -67,7 +68,6 @@ let gameState = {
     worldId: null,
     worldData: [],
     players: {},
-    enemies: {},
     isPaused: false,
     isInventoryOpen: false,
     localPlayer: {
@@ -91,7 +91,6 @@ const ctx = canvas.getContext('2d');
 // To store unsubscribe functions for Firestore listeners, so we can detach them later.
 let worldUnsubscribe = null;
 let playersUnsubscribe = null;
-let enemiesUnsubscribe = null;
 
 // --- Asset & Data Definitions ---
 const TILE_TYPES = {
@@ -99,7 +98,7 @@ const TILE_TYPES = {
     1: { name: 'Grass', color: '#34a853', hardness: 1 },
     2: { name: 'Dirt', color: '#8b5e3c', hardness: 1 },
     3: { name: 'Stone', color: '#808080', hardness: 2 },
-    4: { name: 'Wood', color: '#966F33', solid: false, hardness: 1 },
+    4: { name: 'Wood', color: '#966F33', solid: false, hardness: 1.5 },
     5: { name: 'Leaves', color: '#34a853', solid: false, hardness: 0.5 },
     6: { name: 'Sand', color: '#f4e4a4', hardness: 1 },
     7: { name: 'Cactus', color: '#5f9953', hardness: 1 },
@@ -115,10 +114,10 @@ const ITEM_DATA = {
     'gel': { name: 'Gel', color: '#42a5f5' },
     'coal': { name: 'Coal', tileId: 8, placeable: true },
     'iron_ore': { name: 'Iron Ore', tileId: 9, placeable: true },
-    'wooden_pickaxe': { name: 'Wooden Pickaxe', tool: 'pickaxe', power: 1 },
-    'stone_pickaxe': { name: 'Stone Pickaxe', tool: 'pickaxe', power: 2 },
-    'wooden_axe': { name: 'Wooden Axe', tool: 'axe', power: 1 },
-    'stone_axe': { name: 'Stone Axe', tool: 'axe', power: 2 },
+    'wooden_pickaxe': { name: 'Wooden Pickaxe', tool: 'pickaxe', power: 2 },
+    'stone_pickaxe': { name: 'Stone Pickaxe', tool: 'pickaxe', power: 3 },
+    'wooden_axe': { name: 'Wooden Axe', tool: 'axe', power: 2 },
+    'stone_axe': { name: 'Stone Axe', tool: 'axe', power: 3 },
     'stone_blade': { name: 'Stone Blade', tool: 'weapon', power: 2 },
     'crafting_bench': { name: 'Crafting Bench', tileId: 10, placeable: true },
     'torch': { name: 'Torch', color: '#ffeb3b', placeable: true, light: 8 }
@@ -324,49 +323,68 @@ function updateCamera() {
 }
 
 // --- Player Logic ---
+/**
+ * IMPROVED: Updates player position based on input and resolves collisions accurately.
+ * This function now handles collisions on each axis independently for robust movement,
+ * preventing players from getting stuck in or phasing through blocks.
+ */
 function updatePlayer(deltaTime) {
     const player = gameState.localPlayer;
+
+    // --- 1. Handle Input ---
     if (input.left) player.vx = -PLAYER_SPEED;
     else if (input.right) player.vx = PLAYER_SPEED;
     else player.vx = 0;
-
-    player.vy += GRAVITY;
 
     if (input.jump && player.onGround) {
         player.vy = JUMP_FORCE;
         player.onGround = false;
     }
 
-    // Collision detection
+    // --- 2. Apply physics (Gravity) ---
+    player.vy += GRAVITY;
+
+    // --- 3. Resolve collisions, axis by axis ---
     let newX = player.x + player.vx;
     let newY = player.y + player.vy;
-    player.onGround = false;
-    
-    // Check for collision on the X axis
+
+    // --- X-Axis Collision Resolution ---
+    // Check for collisions at the new X position, but current Y position.
     if (checkCollision(newX, player.y)) {
-        newX = player.x;
+        if (player.vx > 0) { // Moving Right
+            const tileX = Math.floor((newX + TILE_SIZE - 1) / TILE_SIZE);
+            newX = tileX * TILE_SIZE - TILE_SIZE; // Snap to left edge of tile
+        } else if (player.vx < 0) { // Moving Left
+            const tileX = Math.floor(newX / TILE_SIZE);
+            newX = (tileX + 1) * TILE_SIZE; // Snap to right edge of tile
+        }
         player.vx = 0;
     }
-    
-    // Check for collision on the Y axis
-    if (checkCollision(newX, newY)) {
-        if(player.vy > 0) { // Moving down
+    player.x = newX; // Commit the final, resolved X position.
+
+    // --- Y-Axis Collision Resolution ---
+    player.onGround = false;
+    // Check for collisions at the new Y position, using the resolved X position.
+    if (checkCollision(player.x, newY)) {
+        if (player.vy > 0) { // Moving Down
+            const tileY = Math.floor((newY + TILE_SIZE * 2 - 1) / TILE_SIZE);
+            newY = tileY * TILE_SIZE - (TILE_SIZE * 2); // Snap to top edge of tile
             player.onGround = true;
-            newY = Math.floor(newY / TILE_SIZE) * TILE_SIZE - (TILE_SIZE * 2);
-        } else if(player.vy < 0) { // Moving up
-            newY = (Math.floor(player.y / TILE_SIZE)) * TILE_SIZE;
+        } else if (player.vy < 0) { // Moving Up
+            const tileY = Math.floor(newY / TILE_SIZE);
+            newY = (tileY + 1) * TILE_SIZE; // Snap to bottom edge of tile
         }
         player.vy = 0;
     }
+    player.y = newY; // Commit the final, resolved Y position.
 
-    player.x = newX;
-    player.y = newY;
-    
-    // Respawn if player falls out of the world
-    if(player.y > (WORLD_HEIGHT - 3) * TILE_SIZE) {
+    // --- 4. Check for out-of-world ---
+    // Respawn if player falls out of the world.
+    if (player.y > WORLD_HEIGHT * TILE_SIZE) {
         respawnPlayer();
     }
 }
+
 
 function checkCollision(x, y) {
     // Define the player's bounding box
@@ -392,10 +410,32 @@ function isTileSolid(x, y) {
     return tileId > 0 && TILE_TYPES[tileId].solid !== false;
 }
 
+/**
+ * IMPROVED: Respawns the player at a safe, empty location.
+ * It starts at a default spawn point and searches horizontally for a
+ * 1x2 area of empty blocks to prevent spawning inside walls.
+ */
 function respawnPlayer() {
     const player = gameState.localPlayer;
-    player.x = (WORLD_WIDTH / 2) * TILE_SIZE;
-    player.y = (WORLD_HEIGHT / 2.5 - 5) * TILE_SIZE;
+    let spawnX = (WORLD_WIDTH / 2) * TILE_SIZE;
+    let spawnY = (WORLD_HEIGHT / 2.5 - 5) * TILE_SIZE;
+    let spawnTileX = Math.floor(spawnX / TILE_SIZE);
+    let spawnTileY = Math.floor(spawnY / TILE_SIZE);
+    
+    // Search for a safe spot (empty 1x2 area)
+    let safeSpotFound = false;
+    for (let i = 0; i < 100; i++) { // Search up to 100 tiles away
+        const currentTileX = spawnTileX + i;
+        // Check for a 2-block high empty space
+        if (!isTileSolid(currentTileX, spawnTileY) && !isTileSolid(currentTileX, spawnTileY - 1)) {
+            spawnX = currentTileX * TILE_SIZE;
+            safeSpotFound = true;
+            break;
+        }
+    }
+
+    player.x = spawnX;
+    player.y = spawnY;
     player.vx = 0;
     player.vy = 0;
     player.health = player.maxHealth;
@@ -423,12 +463,31 @@ function handleAction(event) {
     }
 }
 
+/**
+ * IMPROVED: Implements tool power vs. block hardness.
+ * A block can only be broken if the player's selected tool has enough 'power'.
+ */
 async function breakBlock(x, y) {
     if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) return;
     const originalTileId = gameState.worldData[x]?.[y];
     if (!originalTileId) return;
     
-    // TODO: check tool power vs block hardness
+    // --- Tool Power vs Block Hardness Check ---
+    const blockHardness = TILE_TYPES[originalTileId]?.hardness ?? 999;
+    
+    const selectedItem = gameState.localPlayer.hotbar[gameState.localPlayer.selectedHotbarSlot];
+    const itemData = selectedItem ? ITEM_DATA[selectedItem.type] : null;
+    let toolPower = 0; // Hands have 0 power
+    if(itemData && itemData.tool) {
+        toolPower = itemData.power;
+    }
+    
+    // Allow breaking if tool is strong enough, or if block is very soft (hardness < 1)
+    if (toolPower < blockHardness && blockHardness >= 1) {
+        console.log(`Tool not strong enough! Power: ${toolPower}, Hardness: ${blockHardness}`);
+        return; // Stop execution
+    }
+    // --- End of Check ---
     
     // Update local state immediately for responsiveness
     const blockToDrop = getDropFromTile(originalTileId);
@@ -519,6 +578,7 @@ function updateHotbarFromInventory() {
 // --- UI & Controls Setup ---
 function setupControls() {
     window.addEventListener('keydown', (e) => {
+        if(document.getElementById('world-code-input') === document.activeElement) return;
         if(gameState.isInventoryOpen || gameState.isPaused) return;
         switch(e.key.toLowerCase()) {
             case 'a': case 'arrowleft': input.left = true; break;
@@ -637,14 +697,44 @@ function updateCraftingList() {
     }
 }
 
+/**
+ * IMPROVED: Checks if a recipe can be crafted.
+ * Now includes a check for workbench proximity if `recipe.bench` is true.
+ */
 function checkCanCraft(recipe) {
-    // TODO: Add check for crafting bench proximity if recipe.bench is true
+    // Check if player is near a crafting bench if required
+    if (recipe.bench && !isPlayerNearTile(10)) { // 10 is the ID for Crafting Bench
+        return false;
+    }
+    
+    // Check if player has the required items
     for(const [item, count] of Object.entries(recipe.requires)) {
         if(!gameState.localPlayer.inventory[item] || gameState.localPlayer.inventory[item] < count) {
             return false;
         }
     }
     return true;
+}
+
+/**
+ * NEW: Helper function to check for a specific tile near the player.
+ * @param {number} tileId The ID of the tile to search for.
+ * @returns {boolean} True if the tile is found within a 5x5 area around the player.
+ */
+function isPlayerNearTile(tileId) {
+    const player = gameState.localPlayer;
+    const searchRadius = 2; // 2 tiles in each direction (5x5 area)
+    const playerTileX = Math.floor((player.x + TILE_SIZE / 2) / TILE_SIZE);
+    const playerTileY = Math.floor((player.y + TILE_SIZE) / TILE_SIZE);
+
+    for (let x = playerTileX - searchRadius; x <= playerTileX + searchRadius; x++) {
+        for (let y = playerTileY - searchRadius; y <= playerTileY + searchRadius; y++) {
+            if (isTileSolid(x, y) && gameState.worldData[x]?.[y] === tileId) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 function craftItem(itemType, recipe) {
@@ -672,7 +762,9 @@ async function hostNewWorld() {
     
     const worldRef = doc(db, `artifacts/${appId}/public/data/worlds`, worldCode);
     try {
-        // Firestore works better with objects than arrays, so we convert the columns.
+        // Firestore works better with objects than arrays. We convert the world array's
+        // columns into objects where the index is the key. This prevents issues with
+        // sparse or non-contiguous arrays, which Firestore doesn't handle well.
         const worldDataForFirestore = gameState.worldData.map(col => Object.assign({}, col));
         await setDoc(worldRef, { 
             createdAt: new Date(),
@@ -735,14 +827,18 @@ function startGame(worldId) {
     worldUnsubscribe = onSnapshot(worldRef, (docSnap) => {
         if(docSnap.exists()){
             const data = docSnap.data();
-            // Convert Firestore's object-based array back into a proper JavaScript array
+            // Convert Firestore's object-based array back into a proper JavaScript array.
+            // This is necessary because Firestore stores arrays as objects with integer keys.
+            // We sort the keys to ensure the array is reconstructed in the correct order.
             const worldArray = [];
             if (data.worldData) {
                 Object.keys(data.worldData).sort((a,b) => a - b).forEach(x => {
                     worldArray[x] = [];
-                    Object.keys(data.worldData[x]).sort((a,b) => a - b).forEach(y => {
-                        worldArray[x][y] = data.worldData[x][y];
-                    });
+                    if (data.worldData[x]) {
+                        Object.keys(data.worldData[x]).sort((a,b) => a - b).forEach(y => {
+                            worldArray[x][y] = data.worldData[x][y];
+                        });
+                    }
                 });
             }
             gameState.worldData = worldArray;
@@ -761,7 +857,9 @@ function startGame(worldId) {
         gameState.players = newPlayers;
         
         if (newPlayers[userId]) {
-            // Avoid overwriting local physics state with stale server data
+            // Avoid overwriting local physics state with stale server data.
+            // This preserves the smoothness of client-side prediction for the local player,
+            // while still syncing other state like health, inventory, etc.
             const {x, y, vx, vy, onGround, ...serverState} = newPlayers[userId];
             Object.assign(gameState.localPlayer, serverState);
         }
