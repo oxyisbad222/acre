@@ -1,0 +1,232 @@
+/* --- Base Styles --- */
+body {
+    font-family: 'Press Start 2P', cursive;
+    background-color: #333;
+    color: #fff;
+    overflow: hidden;
+    /* Prevents unwanted touch actions like scrolling or zooming on mobile */
+    touch-action: none;
+    -webkit-user-select: none; /* Safari */
+    -ms-user-select: none; /* IE 10+ */
+    user-select: none;
+}
+
+canvas {
+    background-color: #78a9fa; /* A pleasant sky blue */
+    display: block;
+    /* Ensures crisp, pixelated rendering without blurring */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+/* --- HUD & UI Elements --- */
+.hud-element {
+    position: absolute;
+    z-index: 10;
+}
+
+.hotbar-slot {
+    width: 50px;
+    height: 50px;
+    border: 3px solid #555;
+    background-color: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: white;
+    position: relative;
+    box-shadow: inset 2px 2px #000, inset -2px -2px #000;
+}
+
+.hotbar-slot.selected {
+    border-color: #facc15; /* yellow-400 from Tailwind */
+    transform: scale(1.1);
+    background-color: rgba(50,50,0,0.5);
+}
+
+.hotbar-item-image {
+    width: 32px;
+    height: 32px;
+}
+
+.item-count {
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px black;
+}
+
+/* --- Mobile On-Screen Controls --- */
+.d-pad {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 150px;
+    height: 150px;
+    z-index: 20;
+}
+
+.d-pad-btn {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#d-pad-left { top: 45px; left: 0; }
+#d-pad-right { top: 45px; right: 0; }
+
+.action-buttons {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.action-btn {
+    width: 70px;
+    height: 70px;
+    background-color: rgba(255, 255, 255, 0.4);
+    border: 2px solid rgba(0, 0, 0, 0.5);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+#action-button {
+    width: 80px;
+    height: 80px;
+}
+
+/* --- Modals and Menus --- */
+.modal {
+    background-color: #c6c6c6; /* A light gray, typical for old UI */
+    border: 4px solid;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    padding: 2rem;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    color: #333;
+}
+
+.pixel-button {
+    background: #c6c6c6; 
+    border: 4px solid;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    padding: 10px 20px;
+    color: #333;
+    font-family: 'Press Start 2P', cursive;
+    text-transform: uppercase;
+    transition: all 0.1s;
+}
+
+.pixel-button:active {
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+}
+
+.pixel-input {
+    background: #ffffff;
+    border: 3px solid;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+    padding: 10px;
+    font-family: 'Press Start 2P', cursive;
+    color: #1f2937;
+    outline: none;
+}
+
+/* --- Inventory & Crafting Screen --- */
+#inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 10px;
+}
+
+.crafting-recipes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#inventory-screen .hotbar-slot {
+    width: 60px;
+    height: 60px;
+}
+
+.recipe {
+    border: 3px solid #555;
+    padding: 8px;
+    cursor: pointer;
+    background-color: rgba(0,0,0,0.2);
+}
+
+.recipe:hover {
+    background-color: rgba(0,0,0,0.4);
+}
+
+.recipe.can-craft {
+    border-color: #22c55e; /* green-500 from Tailwind */
+    background-color: rgba(34, 197, 94, 0.2);
+}
+
+/* --- Main Menu Parallax Background --- */
+.parallax-bg {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #87CEEB; /* Sky blue */
+    background-size: cover;
+    background-position: center;
+}
+
+.parallax-layer {
+    position: absolute;
+    background-repeat: repeat-x;
+    background-position: 0 0;
+    width: 100%;
+    height: 100%;
+    transition: background-position 1s ease-out;
+    background-size: contain;
+}
+
+#parallax-hills { 
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200"><path d="M0 100 C 50 50, 150 50, 200 100 S 250 150, 300 100 S 350 50, 400 100 S 450 150, 500 100 S 550 50, 600 100 S 650 150, 700 100 S 750 50, 800 100 V 200 H 0 Z" fill="%23228B22"/></svg>'); 
+    background-position: bottom; 
+    height: 200px; 
+    bottom: 0;
+    opacity: 0.7;
+}
+
+#parallax-trees { 
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"><path d="M50 300 L 50 150 L 25 150 L 75 50 L 125 150 L 100 150 L 100 300 Z M200 300 L 200 120 L 175 120 L 225 20 L 275 120 L 250 120 L 250 300 Z M350 300 L 350 180 L 325 180 L 375 80 L 425 180 L 400 180 L 400 300 Z M500 300 L 500 150 L 475 150 L 525 50 L 575 150 L 550 150 L 550 300 Z M650 300 L 650 120 L 625 120 L 675 20 L 725 120 L 700 120 L 700 300 Z" fill="%23006400"/></svg>'); 
+    background-position: bottom; 
+    height: 300px; 
+    bottom: 0;
+    opacity: 0.6;
+}
