@@ -25,6 +25,7 @@ const PLAYER_SPEED = 4;
 const JUMP_FORCE = -13;
 const PLAYER_HEIGHT = TILE_SIZE * 1.8;
 const PLAYER_WIDTH = TILE_SIZE * 0.9;
+const FOOTSTEP_INTERVAL = 350; // ms
 
 let gameState = {
     worldId: null,
@@ -37,6 +38,7 @@ let gameState = {
     localPlayer: {
         x: 0, y: 0, vx: 0, vy: 0, health: 10, maxHealth: 10, onGround: false, character: 'male',
         inventory: {}, hotbar: [null, null, null, null, null, null, null, null], selectedHotbarSlot: 0,
+        lastFootstepTime: 0
     }
 };
 
@@ -47,16 +49,39 @@ const loadingScreen = document.getElementById('loading-screen'), loadingStatus =
       ctx = canvas.getContext('2d'), worldCanvas = document.createElement('canvas'), worldCtx = worldCanvas.getContext('2d');
 
 let worldUnsubscribe = null, playersUnsubscribe = null;
+let musicElement = null;
+let ambientSoundElement = null;
 
 // --- Asset & Data Definitions ---
-const assets = { images: {}, sprites: {}, sounds: {} };
+const assets = { images: {}, sprites: {}, sounds: {}, music: {} };
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const SOUND_DATA = { 'ui_click': './assets/sfx/ui_click.wav', 'break_stone': './assets/sfx/break_stone.wav', 'break_wood': './assets/sfx/break_wood.wav', 'break_dirt': './assets/sfx/break_dirt.wav', 'player_jump': './assets/sfx/player_jump.wav', 'craft_item': './assets/sfx/craft_item.wav', 'break_sand': './assets/sfx/break_sand.wav', 'break_glass': './assets/sfx/break_glass.wav' };
 
+// NOTE: Assumes .wav format and a numbered convention inside folders. Adjust paths if needed.
+const SOUND_DATA = {
+    footsteps: {
+        grass: Array.from({length: 4}, (_, i) => `./assets/sfx/Footsteps_Grass/Footsteps_Grass_Walk/Footsteps_Grass_Walk_0${i+1}.wav`),
+        dirt: Array.from({length: 4}, (_, i) => `./assets/sfx/Footsteps_DirtyGround/Footsteps_DirtyGround_Walk/Footsteps_DirtyGround_Walk_0${i+1}.wav`),
+        stone: Array.from({length: 4}, (_, i) => `./assets/sfx/Footsteps_Rock/Footsteps_Rock_Walk/Footsteps_Rock_Walk_0${i+1}.wav`),
+        sand: Array.from({length: 4}, (_, i) => `./assets/sfx/Footsteps_Sand/Footsteps_Sand_Walk/Footsteps_Sand_Walk_0${i+1}.wav`),
+        wood: Array.from({length: 4}, (_, i) => `./assets/sfx/Footsteps_Wood/Footsteps_Wood_Walk/Footsteps_Wood_Walk_0${i+1}.wav`),
+    },
+    voice: {
+        male: { jump: './assets/sfx/VoiceFX/Male/Male_Jump_01.wav' },
+        female: { jump: './assets/sfx/VoiceFX/Female/Female_Jump_01.wav' },
+        alien: { jump: './assets/sfx/VoiceFX/Male/Male_Jump_01.wav' } // Placeholder for alien
+    },
+    ambient: {
+        rain: './assets/sfx/rain.wav',
+        ocean: './assets/sfx/ocean.wav'
+    }
+};
+const MUSIC_DATA = { 'calm': './assets/Music/calm.mp3', 'dungeon': './assets/Music/dungeon.mp3' };
+
+const PLAYABLE_CHARACTERS = ['male', 'female', 'alien'];
 const CHARACTER_DATA = {
-    'male': { head: 'male_head.png', body: 'male_body.png' },
-    'female': { head: 'female_head.png', body: 'female_body.png' },
-    'alien': { head: 'alien_head.png', body: 'alien_body.png' },
+    'male': { head: 'male_head.png', body: 'male_body.png', voice: 'male' },
+    'female': { head: 'female_head.png', body: 'female_body.png', voice: 'female' },
+    'alien': { head: 'alien_head.png', body: 'alien_body.png', voice: 'alien' },
     'boar': { head: 'boar_head.png', body: 'boar_body.png' },
     'gnome': { head: 'gnome_head.png', body: 'gnome_body.png' },
     'skeleton': { head: 'skeleton_head.png', body: 'skeleton_body.png' },
@@ -65,91 +90,39 @@ const CHARACTER_DATA = {
 
 const TILE_TYPES = {
     0: { name: 'Sky', solid: false },
-    1: { name: 'Grass', sprite: 'dirt_grass.png', hardness: 1, sound: 'break_dirt' },
-    2: { name: 'Dirt', sprite: 'dirt.png', hardness: 1, sound: 'break_dirt' },
-    3: { name: 'Stone', sprite: 'stone.png', hardness: 2, sound: 'break_stone' },
-    4: { name: 'Wood', sprite: 'trunk_mid.png', solid: true, hardness: 1.5, sound: 'break_wood' },
-    5: { name: 'Leaves', sprite: 'leaves.png', solid: false, hardness: 0.5, sound: 'break_dirt' },
-    6: { name: 'Sand', sprite: 'sand.png', hardness: 1, sound: 'break_sand' },
-    7: { name: 'Cactus', sprite: 'cactus_side.png', hardness: 1, damage: 1, sound: 'break_wood' },
-    8: { name: 'Coal Ore', sprite: 'stone_coal.png', hardness: 3, sound: 'break_stone' },
-    9: { name: 'Iron Ore', sprite: 'stone_iron.png', hardness: 4, sound: 'break_stone' },
-    10: { name: 'Crafting Bench', sprite: 'table.png', solid: true, hardness: 2, sound: 'break_wood' },
-    11: { name: 'Wood Planks', sprite: 'wood.png', solid: true, hardness: 1.5, sound: 'break_wood' },
-    12: { name: 'Grey Brick', sprite: 'brick_grey.png', solid: true, hardness: 2.5, sound: 'break_stone' },
-    13: { name: 'Red Brick', sprite: 'brick_red.png', solid: true, hardness: 2.5, sound: 'break_stone' },
-    14: { name: 'Glass', sprite: 'glass.png', solid: true, hardness: 0.5, sound: 'break_glass' },
-    15: { name: 'Glass Frame', sprite: 'glass_frame.png', solid: true, hardness: 0.5, sound: 'break_glass' },
-    16: { name: 'Lava', sprite: 'lava.png', solid: false, damage: 5 },
-    17: { name: 'Water', sprite: 'water.png', solid: false },
-    18: { name: 'Oven', sprite: 'oven.png', solid: true, hardness: 2, sound: 'break_stone' },
-    19: { name: 'Iron Ore Alt', sprite: 'stone_browniron.png', hardness: 4, sound: 'break_stone' },
-    20: { name: 'Silver Ore', sprite: 'stone_silver.png', hardness: 5, sound: 'break_stone' },
-    21: { name: 'Gold Ore', sprite: 'stone_gold.png', hardness: 5, sound: 'break_stone' },
-    22: { name: 'Diamond Ore', sprite: 'stone_diamond.png', hardness: 6, sound: 'break_stone' },
-    23: { name: 'Ruby Ore', sprite: 'greystone_ruby.png', hardness: 6, sound: 'break_stone' },
-    24: { name: 'Emerald Ore', sprite: 'redstone_emerald.png', hardness: 6, sound: 'break_stone' },
-    25: { name: 'Wooden Fence', sprite: 'fence_wood.png', solid: true, hardness: 1.5, sound: 'break_wood'},
-    26: { name: 'Stone Fence', sprite: 'fence_stone.png', solid: true, hardness: 2, sound: 'break_stone'},
+    1: { name: 'Grass', sprite: 'dirt_grass.png', hardness: 1, footstepType: 'grass' },
+    2: { name: 'Dirt', sprite: 'dirt.png', hardness: 1, footstepType: 'dirt' },
+    3: { name: 'Stone', sprite: 'stone.png', hardness: 2, footstepType: 'stone' },
+    4: { name: 'Wood', sprite: 'trunk_mid.png', solid: true, hardness: 1.5, footstepType: 'wood' },
+    5: { name: 'Leaves', sprite: 'leaves.png', solid: false, hardness: 0.5, footstepType: 'grass' },
+    6: { name: 'Sand', sprite: 'sand.png', hardness: 1, footstepType: 'sand' },
+    7: { name: 'Cactus', sprite: 'cactus_side.png', hardness: 1, damage: 1, footstepType: 'wood' },
+    8: { name: 'Coal Ore', sprite: 'stone_coal.png', hardness: 3, footstepType: 'stone' },
+    9: { name: 'Iron Ore', sprite: 'stone_iron.png', hardness: 4, footstepType: 'stone' },
+    10: { name: 'Crafting Bench', sprite: 'table.png', solid: true, hardness: 2, footstepType: 'wood' },
+    11: { name: 'Wood Planks', sprite: 'wood.png', solid: true, hardness: 1.5, footstepType: 'wood' },
+    12: { name: 'Grey Brick', sprite: 'brick_grey.png', solid: true, hardness: 2.5, footstepType: 'stone' },
+    13: { name: 'Red Brick', sprite: 'brick_red.png', solid: true, hardness: 2.5, footstepType: 'stone' },
+    14: { name: 'Glass', sprite: 'glass.png', solid: true, hardness: 0.5, footstepType: 'stone' },
 };
 
 const ITEM_DATA = {
-    // Resources
     'wood': { name: 'Wood Log', tileId: 4, placeable: true, sprite: 'trunk_side.png' },
     'wood_planks': { name: 'Planks', tileId: 11, placeable: true, sprite: 'wood.png' },
-    'stick': { name: 'Stick', sprite: 'arrow.png' }, // Using arrow sprite for stick
+    'stick': { name: 'Stick', sprite: 'arrow.png' },
     'stone': { name: 'Stone', tileId: 3, placeable: true, sprite: 'stone.png' },
     'sand': { name: 'Sand', tileId: 6, placeable: true, sprite: 'sand.png' },
     'coal': { name: 'Coal', sprite: 'ore_coal.png' },
     'iron_ore': { name: 'Iron Ore', sprite: 'ore_iron.png' },
-    'silver_ore': { name: 'Silver Ore', sprite: 'ore_silver.png' },
-    'gold_ore': { name: 'Gold Ore', sprite: 'ore_gold.png' },
-    'diamond': { name: 'Diamond', sprite: 'ore_diamond.png' },
-    'ruby': { name: 'Ruby', sprite: 'ore_ruby.png' },
-    'emerald': { name: 'Emerald', sprite: 'ore_emerald.png' },
-    'iron_ingot': { name: 'Iron Ingot', sprite: 'ore_ironAlt.png' }, // Placeholder sprite
-    
-    // Tools
-    'pickaxe_wood': { name: 'Wooden Pickaxe', tool: 'pickaxe', power: 1.5, sprite: 'pick_iron.png' }, // iron sprite is wood-colored
-    'pickaxe_stone': { name: 'Stone Pickaxe', tool: 'pickaxe', power: 2.5, sprite: 'pick_bronze.png' }, // bronze sprite is stone-colored
-    'pickaxe_iron': { name: 'Iron Pickaxe', tool: 'pickaxe', power: 3.5, sprite: 'pick_silver.png' }, // silver sprite is iron-colored
-    'axe_wood': { name: 'Wooden Axe', tool: 'axe', power: 1.5, sprite: 'axe_iron.png' }, // iron sprite is wood-colored
-    'axe_stone': { name: 'Stone Axe', tool: 'axe', power: 2.5, sprite: 'axe_bronze.png' }, // bronze sprite is stone-colored
-    'axe_iron': { name: 'Iron Axe', tool: 'axe', power: 3.5, sprite: 'axe_silver.png' }, // silver sprite is iron-colored
-    'shovel_wood': { name: 'Wooden Shovel', tool: 'shovel', power: 1.5, sprite: 'shovel_iron.png' },
-    'shovel_stone': { name: 'Stone Shovel', tool: 'shovel', power: 2.5, sprite: 'shovel_bronze.png' },
-    'shovel_iron': { name: 'Iron Shovel', tool: 'shovel', power: 3.5, sprite: 'shovel_silver.png' },
-    'sword_stone': { name: 'Stone Sword', tool: 'weapon', power: 2, sprite: 'sword_bronze.png' },
-    'sword_iron': { name: 'Iron Sword', tool: 'weapon', power: 3, sprite: 'sword_silver.png' },
-    
-    // Placeable
+    'iron_ingot': { name: 'Iron Ingot', sprite: 'ore_ironAlt.png' },
     'crafting_bench': { name: 'Crafting Bench', tileId: 10, placeable: true, sprite: 'table.png' },
     'glass': { name: 'Glass Pane', tileId: 14, placeable: true, sprite: 'glass.png' },
-    'oven': { name: 'Oven', tileId: 18, placeable: true, sprite: 'oven.png' },
-    'fence_wood': { name: 'Wood Fence', tileId: 25, placeable: true, sprite: 'fence_wood.png'},
-    'fence_stone': { name: 'Stone Fence', tileId: 26, placeable: true, sprite: 'fence_stone.png'},
 };
 
 const CRAFTING_RECIPES = {
     'wood_planks': { requires: { 'wood': 1 }, quantity: 4 },
     'stick': { requires: { 'wood_planks': 2 }, quantity: 4 },
     'crafting_bench': { requires: { 'wood_planks': 4 }, quantity: 1 },
-    'oven': { requires: { 'stone': 8 }, quantity: 1, bench: true },
-    'pickaxe_wood': { requires: { 'wood_planks': 3, 'stick': 2 }, quantity: 1, bench: true },
-    'axe_wood': { requires: { 'wood_planks': 3, 'stick': 2 }, quantity: 1, bench: true },
-    'shovel_wood': { requires: { 'wood_planks': 1, 'stick': 2 }, quantity: 1, bench: true },
-    'pickaxe_stone': { requires: { 'stone': 3, 'stick': 2 }, quantity: 1, bench: true },
-    'axe_stone': { requires: { 'stone': 3, 'stick': 2 }, quantity: 1, bench: true },
-    'shovel_stone': { requires: { 'stone': 1, 'stick': 2 }, quantity: 1, bench: true },
-    'sword_stone': { requires: { 'stone': 2, 'stick': 1 }, quantity: 1, bench: true },
-    'pickaxe_iron': { requires: { 'iron_ingot': 3, 'stick': 2 }, quantity: 1, bench: true },
-    'axe_iron': { requires: { 'iron_ingot': 3, 'stick': 2 }, quantity: 1, bench: true },
-    'shovel_iron': { requires: { 'iron_ingot': 1, 'stick': 2 }, quantity: 1, bench: true },
-    'sword_iron': { requires: { 'iron_ingot': 2, 'stick': 1 }, quantity: 1, bench: true },
-    'fence_wood': { requires: { 'stick': 6 }, quantity: 4, bench: true},
-    'fence_stone': { requires: { 'stone': 6 }, quantity: 4, bench: true},
-    'glass': { requires: { 'sand': 1 }, quantity: 1, oven: true }, // Needs smelting logic
-    'iron_ingot': { requires: { 'iron_ore': 1, 'coal': 1 }, quantity: 1, oven: true }, // Needs smelting logic
 };
 
 // --- Initialization & Asset Loading ---
@@ -168,6 +141,8 @@ async function initializeGame() {
         loadingStatus.textContent = 'Ready!';
         loadingScreen.classList.add('hidden');
         showCharacterSelect();
+        playMusic();
+        playAmbientSound();
     } catch (error) {
         console.error("Game initialization failed:", error);
         loadingStatus.textContent = 'Error starting game.';
@@ -175,65 +150,111 @@ async function initializeGame() {
 }
 
 async function initializeAssets() {
-    await Promise.all([
-        loadSpriteSheetFromURL('characters', './assets/Spritesheets/spritesheet_characters.xml', './assets/Spritesheets/spritesheet_characters.png'),
-        loadSpriteSheetFromURL('tiles', './assets/Spritesheets/spritesheet_tiles.xml', './assets/Spritesheets/spritesheet_tiles.png'),
-        loadSpriteSheetFromURL('items', './assets/Spritesheets/spritesheet_items.xml', './assets/Spritesheets/spritesheet_items.png'),
-        loadSpriteSheetFromURL('particles', './assets/Spritesheets/spritesheet_particles.xml', './assets/Spritesheets/spritesheet_particles.png')
-    ]);
+    const xmlUrls = {
+        'characters': './assets/Spritesheets/spritesheet_characters.xml',
+        'tiles': './assets/Spritesheets/spritesheet_tiles.xml',
+        'items': './assets/Spritesheets/spritesheet_items.xml',
+        'particles': './assets/Spritesheets/spritesheet_particles.xml',
+    };
+    const imageUrls = {
+        'characters': './assets/Spritesheets/spritesheet_characters.png',
+        'tiles': './assets/Spritesheets/spritesheet_tiles.png',
+        'items': './assets/Spritesheets/spritesheet_items.png',
+        'particles': './assets/Spritesheets/spritesheet_particles.png',
+    }
+
+    const promises = Object.keys(xmlUrls).map(key => loadSpriteSheetFromURL(key, xmlUrls[key], imageUrls[key]));
+    await Promise.all(promises);
 }
 
 async function loadSpriteSheetFromURL(name, xmlUrl, imageUrl) {
-    const response = await fetch(xmlUrl);
-    const xmlContent = await response.text();
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlContent, "application/xml");
-    const subTextures = xmlDoc.getElementsByTagName("SubTexture");
-    assets.sprites[name] = {};
-    for (const sub of subTextures) {
-        assets.sprites[name][sub.getAttribute("name")] = { x: parseInt(sub.getAttribute("x")), y: parseInt(sub.getAttribute("y")), width: parseInt(sub.getAttribute("width")), height: parseInt(sub.getAttribute("height")) };
-    }
-    assets.images[name] = new Image();
     try {
+        const response = await fetch(xmlUrl);
+        if(!response.ok) throw new Error(`Failed to fetch ${xmlUrl}`);
+        const xmlContent = await response.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlContent, "application/xml");
+        const subTextures = xmlDoc.getElementsByTagName("SubTexture");
+        assets.sprites[name] = {};
+        for (const sub of subTextures) {
+            assets.sprites[name][sub.getAttribute("name")] = { x: parseInt(sub.getAttribute("x")), y: parseInt(sub.getAttribute("y")), width: parseInt(sub.getAttribute("width")), height: parseInt(sub.getAttribute("height")) };
+        }
+        assets.images[name] = new Image();
         assets.images[name].src = imageUrl;
         await assets.images[name].decode();
     } catch (e) {
-        console.error(`Failed to load image: ${imageUrl}. Ensure the file path is correct.`);
+        console.error(`Failed to load spritesheet ${name}:`, e);
     }
 }
 
 async function loadSounds() {
-    for (const key in SOUND_DATA) {
-        try {
-            const response = await fetch(SOUND_DATA[key]);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const arrayBuffer = await response.arrayBuffer();
-            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-            assets.sounds[key] = audioBuffer;
-        } catch (e) {
-            // console.warn(`Could not load sound: ${key} from ${SOUND_DATA[key]}`);
+    for (const type in SOUND_DATA) {
+        if (type === 'footsteps' || type === 'voice') {
+            for (const category in SOUND_DATA[type]) {
+                for (const action in SOUND_DATA[type][category]) {
+                    const soundList = SOUND_DATA[type][category][action];
+                    assets.sounds[`${type}_${category}_${action}`] = [];
+                    const promises = (Array.isArray(soundList) ? soundList : [soundList]).map(async (path) => {
+                         try {
+                            const response = await fetch(path);
+                            if (!response.ok) return;
+                            const arrayBuffer = await response.arrayBuffer();
+                            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                            assets.sounds[`${type}_${category}_${action}`].push(audioBuffer);
+                        } catch (e) { /* Fail silently */ }
+                    });
+                    await Promise.all(promises);
+                }
+            }
         }
     }
 }
 
-function playSound(name) {
-    if (assets.sounds[name] && audioCtx.state === 'running') {
-        const source = audioCtx.createBufferSource();
-        source.buffer = assets.sounds[name];
-        source.connect(audioCtx.destination);
-        source.start(0);
+function playSound(soundArray) {
+    if (!soundArray || soundArray.length === 0 || audioCtx.state !== 'running') return;
+    const buffer = soundArray[Math.floor(Math.random() * soundArray.length)];
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+}
+
+function playMusic() {
+    const musicKeys = Object.keys(MUSIC_DATA);
+    if(musicKeys.length === 0) return;
+    if(!musicElement) {
+        musicElement = new Audio();
+        document.body.appendChild(musicElement);
+        musicElement.volume = 0.3;
+        musicElement.loop = true;
     }
+    const randomTrackKey = musicKeys[Math.floor(Math.random() * musicKeys.length)];
+    musicElement.src = MUSIC_DATA[randomTrackKey];
+    musicElement.play().catch(e => {});
+}
+
+function playAmbientSound() {
+    const ambientKeys = Object.keys(SOUND_DATA.ambient);
+    if(ambientKeys.length === 0) return;
+     if(!ambientSoundElement) {
+        ambientSoundElement = new Audio();
+        document.body.appendChild(ambientSoundElement);
+        ambientSoundElement.volume = 0.4;
+        ambientSoundElement.loop = true;
+    }
+    const randomTrackKey = ambientKeys[Math.floor(Math.random() * ambientKeys.length)];
+    ambientSoundElement.src = SOUND_DATA.ambient[randomTrackKey];
+    ambientSoundElement.play().catch(e => {});
 }
 
 
 async function createParallaxTextures() {
-    const groundSprite = assets.sprites.tiles['dirt_grass.png'];
-    const treeTrunkSprite = assets.sprites.tiles['trunk_mid.png'];
-    const leavesSprite = assets.sprites.tiles['leaves.png'];
+    const groundSprite = assets.sprites.tiles?.['dirt_grass.png'];
+    const treeTrunkSprite = assets.sprites.tiles?.['trunk_mid.png'];
+    const leavesSprite = assets.sprites.tiles?.['leaves.png'];
     const tilesSheet = assets.images.tiles;
 
     if (!groundSprite || !treeTrunkSprite || !leavesSprite || !tilesSheet || !tilesSheet.complete || tilesSheet.naturalHeight === 0) {
-        console.error("Parallax textures could not be created because base assets are missing.");
         return;
     }
 
@@ -281,10 +302,18 @@ async function initializeFirebase() {
 // --- Player Physics & Movement ---
 function updatePlayer(deltaTime) {
     const p = gameState.localPlayer;
-    if (input.left) {
-        p.vx = -PLAYER_SPEED;
-    } else if (input.right) {
-        p.vx = PLAYER_SPEED;
+    const now = performance.now();
+
+    if (input.left || input.right) {
+        p.vx = input.left ? -PLAYER_SPEED : PLAYER_SPEED;
+        if (p.onGround && now - p.lastFootstepTime > FOOTSTEP_INTERVAL) {
+            const tileX = Math.floor((p.x + PLAYER_WIDTH / 2) / TILE_SIZE);
+            const tileY = Math.floor((p.y + PLAYER_HEIGHT + 1) / TILE_SIZE);
+            const groundTile = TILE_TYPES[gameState.worldData[tileX]?.[tileY] ?? 0];
+            const footstepType = groundTile?.footstepType || 'dirt';
+            playSound(assets.sounds[`footsteps_${footstepType}_walk`]);
+            p.lastFootstepTime = now;
+        }
     } else {
         p.vx = 0;
     }
@@ -294,7 +323,8 @@ function updatePlayer(deltaTime) {
 
     if (input.jump && p.onGround) {
         p.vy = JUMP_FORCE;
-        playSound('player_jump');
+        const voiceType = CHARACTER_DATA[p.character]?.voice || 'male';
+        playSound(assets.sounds[`voice_${voiceType}_jump`]);
     }
 
     let newX = p.x + p.vx;
@@ -361,7 +391,6 @@ function update(deltaTime) {
     updatePlayer(deltaTime);
     updateParticles(deltaTime);
     updateCamera();
-    // Throttled update to firestore
     if (Math.random() < 0.1) {
         sendPlayerData();
     }
@@ -406,6 +435,7 @@ function drawPlayers() {
     const charSheet = assets.images.characters;
     const spriteData = assets.sprites.characters;
     if (!charSheet || !charSheet.complete || charSheet.naturalHeight === 0) return;
+
     for (const pId in gameState.players) {
         const player = gameState.players[pId];
         if (!player) continue;
@@ -420,10 +450,16 @@ function drawPlayers() {
         const p_y = Math.floor(player.y);
 
         if (bodySprite) {
-            ctx.drawImage(charSheet, bodySprite.x, bodySprite.y, bodySprite.width, bodySprite.height, p_x - (PLAYER_WIDTH * 0.1), p_y, PLAYER_WIDTH * 1.2, PLAYER_HEIGHT);
+            const scale = PLAYER_HEIGHT / bodySprite.height;
+            const scaledWidth = bodySprite.width * scale;
+            const bodyX = p_x + (PLAYER_WIDTH - scaledWidth) / 2;
+            ctx.drawImage(charSheet, bodySprite.x, bodySprite.y, bodySprite.width, bodySprite.height, bodyX, p_y, scaledWidth, PLAYER_HEIGHT);
         }
         if (headSprite) {
-            ctx.drawImage(charSheet, headSprite.x, headSprite.y, headSprite.width, headSprite.height, p_x - 5, p_y - TILE_SIZE + 10, TILE_SIZE * 1.2, TILE_SIZE * 1.2);
+            const scale = (TILE_SIZE * 1.2) / headSprite.height;
+            const scaledWidth = headSprite.width * scale;
+            const headX = p_x + (PLAYER_WIDTH - scaledWidth) / 2;
+            ctx.drawImage(charSheet, headSprite.x, headSprite.y, headSprite.width, headSprite.height, headX, p_y - TILE_SIZE + 10, scaledWidth, TILE_SIZE * 1.2);
         }
 
         ctx.fillStyle = 'white';
@@ -432,6 +468,7 @@ function drawPlayers() {
         ctx.fillText(player.name || pId.substring(0, 5), p_x + PLAYER_WIDTH / 2, p_y - 15);
     }
 }
+
 
 // --- Particle System ---
 function spawnBlockParticles(x, y, tileId) {
@@ -507,7 +544,6 @@ async function hostNewWorld() {
         
         const playerData = { ...gameState.localPlayer, name: `Player_${userId.substring(0, 4)}`, worldId: worldCode };
         
-        // **BUG FIX**: Convert world data to a map of maps for robust saving.
         const worldDataForFirestore = {};
         gameState.worldData.forEach((column, x) => {
             const colData = {};
@@ -527,7 +563,7 @@ async function hostNewWorld() {
 
     } catch (error) {
         console.error("Error hosting world:", error);
-        alert("Could not create world. A network error may have occurred.");
+        alert(`Could not create world. Firebase Error: ${error.message}`);
     } finally {
         hostBtn.disabled = false;
         hostBtn.textContent = "Host New World";
@@ -580,7 +616,6 @@ async function sendPlayerData() {
             hotbar: gameState.localPlayer.hotbar,
             selectedHotbarSlot: gameState.localPlayer.selectedHotbarSlot
         };
-        // Use updateDoc for efficiency
         await updateDoc(playerRef, dataToUpdate);
     } catch (e) { /* silent fail is ok for transient updates */ }
 }
@@ -601,6 +636,8 @@ async function exitToMenu() {
     document.getElementById('inventory-screen').classList.add('hidden');
     mainMenu.classList.add('hidden');
     showCharacterSelect();
+    if(musicElement) musicElement.pause();
+    if(ambientSoundElement) ambientSoundElement.pause();
 }
 
 function generateWorldCode() {
@@ -621,16 +658,16 @@ function startGame(worldId) {
     worldUnsubscribe = onSnapshot(worldRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // **BUG FIX**: Reconstruct world from map of maps into a 2D array
             const newWorldData = Array(WORLD_WIDTH).fill(0).map(() => Array(WORLD_HEIGHT).fill(0));
             if (data.worldData) {
                 for(const x in data.worldData) {
                     for(const y in data.worldData[x]) {
-                        newWorldData[parseInt(x)][parseInt(y)] = data.worldData[x][y];
+                        if(newWorldData[parseInt(x)]) {
+                           newWorldData[parseInt(x)][parseInt(y)] = data.worldData[x][y];
+                        }
                     }
                 }
             }
-            // Only update if there are actual changes
             if (JSON.stringify(gameState.worldData) !== JSON.stringify(newWorldData)) {
                 gameState.worldData = newWorldData;
                 gameState.isWorldDirty = true;
@@ -647,7 +684,6 @@ function startGame(worldId) {
             newPlayers[doc.id] = doc.data();
         });
         gameState.players = newPlayers;
-        // Update local player state from server, but preserve physics state
         if (newPlayers[userId]) {
             const { x, y, vx, vy, onGround, ...serverState } = newPlayers[userId];
             Object.assign(gameState.localPlayer, serverState);
@@ -659,28 +695,23 @@ function startGame(worldId) {
     setupControls();
     lastTime = performance.now();
     requestAnimationFrame(gameLoop);
+    if(musicElement && musicElement.paused) playMusic();
+    if(ambientSoundElement && ambientSoundElement.paused) playAmbientSound();
 }
 
 // --- Inventory & Crafting ---
 function getDropFromTile(tileId) {
     switch (tileId) {
-        case 1: case 2: return 'stone'; // Grass/Dirt drops dirt
+        case 1: case 2: return 'stone';
         case 3: return 'stone';
         case 4: return 'wood';
         case 6: return 'sand';
-        case 7: return null; // Cactus hurts, no drop
+        case 7: return null;
         case 8: return 'coal';
         case 9: return 'iron_ore';
         case 10: return 'crafting_bench';
         case 11: return 'wood_planks';
         case 14: return 'glass';
-        case 18: return 'oven';
-        case 19: return 'iron_ore';
-        case 20: return 'silver_ore';
-        case 21: return 'gold_ore';
-        case 22: return 'diamond';
-        case 23: return 'ruby';
-        case 24: return 'emerald';
         default: return null;
     }
 }
@@ -709,14 +740,12 @@ function removeFromInventory(itemType, count) {
 
 function updateHotbarFromInventory() {
     const p = gameState.localPlayer;
-    const invItems = Object.keys(p.inventory).filter(type => ITEM_DATA[type]?.placeable);
+    const placeableItems = Object.keys(p.inventory).filter(type => ITEM_DATA[type]?.placeable);
     
-    // Clear hotbar first
     p.hotbar.fill(null);
 
-    // Repopulate hotbar
     for (let i = 0; i < p.hotbar.length; i++) {
-        const itemType = invItems[i];
+        const itemType = placeableItems[i];
         if (itemType) {
             p.hotbar[i] = { type: itemType, count: p.inventory[itemType] };
         }
@@ -726,7 +755,6 @@ function updateHotbarFromInventory() {
 
 function craftItem(itemType, recipe) {
     if (!checkCanCraft(recipe)) return;
-    playSound('craft_item');
     for (const [item, count] of Object.entries(recipe.requires)) {
         removeFromInventory(item, count);
     }
@@ -746,15 +774,16 @@ function checkCanCraft(recipe) {
 function showCharacterSelect() {
     const charGrid = document.getElementById('character-grid');
     charGrid.innerHTML = '';
-    Object.keys(CHARACTER_DATA).forEach(charKey => {
+    const charSheet = assets.images.characters;
+
+    PLAYABLE_CHARACTERS.forEach(charKey => {
         const char = CHARACTER_DATA[charKey];
         const option = document.createElement('div');
         option.className = 'character-option';
         option.dataset.charKey = charKey;
         
-        const headSprite = assets.sprites.characters[char.head];
-        const bodySprite = assets.sprites.characters[char.body];
-        const charSheet = assets.images.characters;
+        const headSprite = assets.sprites.characters?.[char.head];
+        const bodySprite = assets.sprites.characters?.[char.body];
 
         if (headSprite && bodySprite && charSheet?.complete) {
             option.innerHTML = `
@@ -764,7 +793,7 @@ function showCharacterSelect() {
                 </div>
                 <p class="mt-4 uppercase">${charKey}</p>`;
         } else {
-             option.innerHTML = `<div class="character-preview"><p>${charKey}</p></div>`;
+             option.innerHTML = `<div class="character-preview flex items-center justify-center"><p>${charKey}</p></div>`;
         }
         
         option.onclick = () => selectCharacter(charKey, option);
@@ -776,7 +805,6 @@ function showCharacterSelect() {
     if (initialElement) {
         initialElement.classList.add('selected');
     } else {
-        // Select first character by default if current one isn't available
         charGrid.firstChild?.classList.add('selected');
         gameState.localPlayer.character = charGrid.firstChild?.dataset.charKey || 'male';
     }
@@ -814,21 +842,15 @@ function updateHUD() {
             const itemImage = assets.images.items;
             if (itemImage && itemData && assets.sprites.items[itemData.sprite]) {
                 const spriteData = assets.sprites.items[itemData.sprite];
-                const imgContainer = document.createElement('div');
-                imgContainer.style.width = '32px';
-                imgContainer.style.height = '32px';
-                imgContainer.style.overflow = 'hidden';
-                imgContainer.style.position = 'relative';
-
                 const img = document.createElement('img');
-                img.style.position = 'absolute';
-                img.style.left = `-${spriteData.x/4}px`;
-                img.style.top = `-${spriteData.y/4}px`;
-                img.style.transform = 'scale(0.25)';
-                img.style.transformOrigin = 'top left';
+                img.className = 'hotbar-item-image';
+                img.style.objectFit = 'none';
+                img.style.width = `${spriteData.width}px`;
+                img.style.height = `${spriteData.height}px`;
+                img.style.objectPosition = `-${spriteData.x}px -${spriteData.y}px`;
+                img.style.transform = 'scale(0.5)';
+                img.style.transformOrigin = 'center';
                 img.src = itemImage.src;
-                img.style.imageRendering = 'pixelated';
-                
                 slot.appendChild(img);
             }
             const countEl = document.createElement('span');
@@ -850,9 +872,13 @@ function togglePause() {
     if (gameState.isPaused) {
         document.getElementById('pause-world-code').textContent = gameState.worldId;
         pauseMenu.classList.remove('hidden');
+        if(musicElement) musicElement.volume = 0.1;
+        if(ambientSoundElement) ambientSoundElement.volume = 0.1;
     } else {
         pauseMenu.classList.add('hidden');
-        lastTime = performance.now(); // Reset timer to avoid frame jump
+        lastTime = performance.now();
+        if(musicElement) musicElement.volume = 0.3;
+        if(ambientSoundElement) ambientSoundElement.volume = 0.4;
     }
 }
 
@@ -864,7 +890,7 @@ function toggleInventory() {
         invScreen.classList.remove('hidden');
     } else {
         invScreen.classList.add('hidden');
-        lastTime = performance.now(); // Reset timer
+        lastTime = performance.now();
     }
 }
 
@@ -886,11 +912,13 @@ function updateInventoryScreen() {
             if (itemImage && itemData && assets.sprites.items[itemData.sprite]) {
                 const spriteData = assets.sprites.items[itemData.sprite];
                 const img = document.createElement('img');
-                img.style.objectFit = 'none';
-                img.style.width = `${spriteData.width * 0.5}px`;
-                img.style.height = `${spriteData.height * 0.5}px`;
-                img.style.objectPosition = `-${spriteData.x * 0.5}px -${spriteData.y * 0.5}px`;
-                img.src = itemImage.src;
+                img.className = 'hotbar-item-image';
+                img.style.transform = 'scale(0.75)';
+                img.src = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAUSURBVHja7cEBAQAAAIIg/69uSEABAAAAAAAAAAAAAAB0BwGAAAEW4gC2AAAAAElFTkSuQmCC`; // transparent pixel
+                img.style.backgroundImage = `url(${itemImage.src})`;
+                img.style.backgroundPosition = `-${spriteData.x*0.75}px -${spriteData.y*0.75}px`;
+                img.style.backgroundRepeat = 'no-repeat';
+
                 slot.appendChild(img);
             }
             const countEl = document.createElement('span');
@@ -936,10 +964,12 @@ function updateCraftingList() {
             const imgContainer = document.getElementById(`recipe-img-${itemType}`);
             const img = document.createElement('img');
             img.style.objectFit = 'none';
-            img.style.width = `${resultSprite.width * 0.4}px`;
-            img.style.height = `${resultSprite.height * 0.4}px`;
-            img.style.objectPosition = `-${resultSprite.x * 0.4}px -${resultSprite.y * 0.4}px`;
+            img.style.width = `${resultSprite.width}px`;
+            img.style.height = `${resultSprite.height}px`;
+            img.style.objectPosition = `-${resultSprite.x}px -${resultSprite.y}px`;
             img.src = itemImage.src;
+            img.style.transform = 'scale(0.4)';
+            img.style.transformOrigin = 'center';
             imgContainer.appendChild(img);
         }
     }
@@ -951,7 +981,7 @@ function setupControls() {
         if (document.activeElement.tagName === 'INPUT') return;
         if (e.key === 'Escape') {
             if (gameState.isInventoryOpen) toggleInventory();
-            else if (gameContainer.style.display !== 'none') togglePause();
+            else if (!gameContainer.classList.contains('hidden')) togglePause();
             return;
         }
         if (e.key.toLowerCase() === 'e' && !gameState.isPaused) {
@@ -1027,9 +1057,6 @@ async function breakBlock(x, y) {
     const originalTileId = gameState.worldData[x]?.[y];
     if (!originalTileId || originalTileId === 0) return;
     
-    const tileInfo = TILE_TYPES[originalTileId];
-    if (tileInfo.sound) playSound(tileInfo.sound);
-
     spawnBlockParticles(x, y, originalTileId);
     
     const blockToDrop = getDropFromTile(originalTileId);
@@ -1037,11 +1064,9 @@ async function breakBlock(x, y) {
         addToInventory(blockToDrop, 1);
     }
     
-    // Local update for immediate feedback
     gameState.worldData[x][y] = 0;
     gameState.isWorldDirty = true;
 
-    // Firestore update
     if (gameState.worldId) {
         const worldRef = doc(db, `worlds`, gameState.worldId);
         await updateDoc(worldRef, { [`worldData.${x}.${y}`]: 0 });
@@ -1053,13 +1078,10 @@ async function placeBlock(x, y, tileId, itemType) {
     if (gameState.worldData[x]?.[y] !== 0) return;
 
     if (!removeFromInventory(itemType, 1)) return;
-    playSound('break_wood'); // Generic placement sound
     
-    // Local update
     gameState.worldData[x][y] = tileId;
     gameState.isWorldDirty = true;
     
-    // Firestore update
     if (gameState.worldId) {
         const worldRef = doc(db, `worlds`, gameState.worldId);
         await updateDoc(worldRef, { [`worldData.${x}.${y}`]: tileId });
@@ -1084,7 +1106,6 @@ document.getElementById('exit-btn').addEventListener('click', exitToMenu);
 document.getElementById('inventory-btn').addEventListener('click', toggleInventory);
 document.getElementById('close-inventory-btn').addEventListener('click', toggleInventory);
 
-// Parallax effect for main menu
 const parallaxHills = document.getElementById('parallax-hills');
 const parallaxTrees = document.getElementById('parallax-trees');
 mainMenu.addEventListener('mousemove', (e) => {
@@ -1094,9 +1115,14 @@ mainMenu.addEventListener('mousemove', (e) => {
     parallaxTrees.style.backgroundPositionX = -x * 60 + 'px';
 });
 
-// A one-time event listener to resume AudioContext after a user gesture.
 document.body.addEventListener('click', () => {
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
+    }
+    if (musicElement && musicElement.paused) {
+        playMusic();
+    }
+    if (ambientSoundElement && ambientSoundElement.paused) {
+        playAmbientSound();
     }
 }, { once: true });
